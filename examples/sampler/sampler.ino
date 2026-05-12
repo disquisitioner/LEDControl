@@ -2,7 +2,7 @@
 #include <LEDControl.h>
 
 #define NUM_LEDS  16
-#define DATA_PIN  10
+#define DATA_PIN  14
 
 CRGB ledsOne[NUM_LEDS];
 

@@ -43,6 +43,10 @@ class LEDControl
     int _curdir;  // Used to keep track of direction in bi-directional runs
     unsigned long _bitmap;  // limited to 32 leds
     int _config;
+    void updateBreathe();
+    void updateMarquee();
+    void updateCylon();
+
 };
 
 #endif

@@ -137,6 +137,9 @@ void LEDControl::setBreathe(CRGB color)
 // Master update function, called once per strip each clock cycle to
 // do whatever is needed to sequence the strip ahead by one 'tick'.
 // Uses the current mode of the strip to figure out what to do.
+//
+// Simple modes are updated directly here, others are handled in 
+// private utility functions to keep the overall switch compact.
 void LEDControl::update()
 {
   int delta;
@@ -224,37 +227,8 @@ void LEDControl::update()
       }
       break;
 
-    // Implement alternating forward & reverse runs.  Is careful to have
-    // a full cycle time equal to 2x the number of LEDs so it can stay in
-    // synch with regular single direction runs.
     case MODE_CYLON:
-      if(_newMode) {
-        fill_solid(_leds,_ledCount,CRGB::Black);  // May not want to do this
-        _leds[0] = _color;
-        _curdir = MODE_RUNFWD;  // Need to keep track of movement direction
-        _newMode = false;        
-      }
-      else {
-        if(_curdir == MODE_RUNFWD)  {
-          // Moving the LED forward
-          // Are we at the end?
-          if(_leds[_ledCount-1] == _color){
-            _curdir = MODE_RUNREV;
-          }
-          else {
-            shiftFwd();
-          }
-        }
-        else {
-          // Moving the LED reverse
-          if(_leds[0] == _color) {
-            _curdir = MODE_RUNFWD;
-          }
-          else {
-            shiftRev();
-          }
-        }
-      }
+      updateCylon();
       break;
     
     case MODE_BITMAP:
@@ -263,73 +237,22 @@ void LEDControl::update()
         int m = min(_ledCount,32);
         unsigned long mask = 1;  // Is unsigned long
         for(int i=0;i<m;i++) {
-          if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }
-        }
+          if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }        }
         _newMode = false;
       }
       break;
 
- 	case MODE_MARQUEE:
- 		if(_newMode) {
- 			fill_solid(_leds,_ledCount,CRGB::Black);
- 			int m = min(_ledCount,32);
- 			unsigned long mask = 1;
- 			for(int i=0;i<m;i++) {
-          		if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }
- 			}
- 			_newMode = false;
- 		}
- 		else {
- 			int m = min(_ledCount,32);
- 			_bitmap = (_bitmap << 1UL) | (_bitmap >> ((unsigned long)(m-1))) ;
- 			unsigned long mask = 1;
- 			for(int i=0;i<m;i++) {
-          		if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }
-          		else { _leds[i] = CRGB::Black; }
- 			}
- 		}
- 		break;
+   	case MODE_MARQUEE:
+      updateMarquee();
+   		break;
 
-	case MODE_BREATHE:
-		if(_newMode) {
-			// Don't need to do any special LED initialization for this effect
-			_newMode = false;
-			_curdir = MODE_RUNFWD;
-			_config = 0; //  Just to make sure
-		}
-
-		CRGB c = _color;  // Use the base color
-		c %= _dimming[_config];
-		fill_solid(_leds,_ledCount,c);
-
-		// Which way do we go next?
-		if(_curdir == MODE_RUNFWD) {
-			// Are we at the end of the dimming map?
-			if( _config == (_numdims-1) ) {
-			  // Yep, reverse direction, but do this dimming index twice
-			  _curdir = MODE_RUNREV;
-			}
-			else {
-			  // Nope, more dimming to do
-			  _config++;
-			}
-		}
-		else {
-			// Must be brightening, then. Are we at the beginning of the dimming map?
-			if( _config == 0) {
-				// Yep, reverse direction but do this dimming index twice
-				_curdir = MODE_RUNFWD;
-			}
-			else {
-				// Nope, more brightening to do
-				_config--;
-			}
-		}
-		break;
+  	case MODE_BREATHE:
+      updateBreathe();
+  		break;
 
     default:
-      Serial.print("Unrecognized mode: "); Serial.println(_mode);
-      break;
+        Serial.print("Unrecognized mode: "); Serial.println(_mode);
+        break;
   }
 }
 
@@ -349,4 +272,100 @@ void LEDControl::shiftRev()
     _leds[i] = _leds[i+1];
   }
   _leds[_ledCount-1] = first;
+}
+
+void LEDControl::updateBreathe()
+{
+  CRGB c;
+
+  if(_newMode) {
+    // Don't need to do any special LED initialization for this effect
+    _newMode = false;
+    _curdir = MODE_RUNFWD;
+    _config = 0; //  Just to make sure
+  }
+
+  c = _color; // Work from the base color
+  c %= _dimming[_config];  // Dim using the _dimming table
+  fill_solid(_leds,_ledCount,c);
+
+  // Which way do we go next?
+  if(_curdir == MODE_RUNFWD) {
+    // Are we at the end of the dimming map?
+    if( _config == (_numdims-1) ) {
+      // Yep, reverse direction, but do this dimming index twice
+      _curdir = MODE_RUNREV;
+    }
+    else {
+      // Nope, more dimming to do
+      _config++;
+    }
+  }
+  else {
+    // Must be brightening, then. Are we at the beginning of the dimming map?
+    if( _config == 0) {
+      // Yep, reverse direction but do this dimming index twice
+      _curdir = MODE_RUNFWD;
+    }
+    else {
+      // Nope, more brightening to do
+      _config--;
+    }
+  }
+}
+
+void LEDControl::updateMarquee()
+{
+  if(_newMode) {
+    fill_solid(_leds,_ledCount,CRGB::Black);
+    int m = min(_ledCount,32);
+    unsigned long mask = 1;
+    for(int i=0;i<m;i++) {
+            if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }
+    }
+    _newMode = false;
+  }
+  else {
+    int m = min(_ledCount,32);
+    _bitmap = (_bitmap << 1UL) | (_bitmap >> ((unsigned long)(m-1))) ;
+    unsigned long mask = 1;
+    for(int i=0;i<m;i++) {
+            if( (_bitmap & (mask<<i)) != 0) { _leds[i] = _color; }
+            else { _leds[i] = CRGB::Black; }
+    }
+  }
+}
+
+// Implement alternating forward & reverse runs.  Is careful to have
+// a full cycle time equal to 2x the number of LEDs so it can stay in
+// synch with regular single direction runs.
+void LEDControl::updateCylon()
+{
+  if(_newMode) {
+    fill_solid(_leds,_ledCount,CRGB::Black);  // May not want to do this
+    _leds[0] = _color;
+    _curdir = MODE_RUNFWD;  // Need to keep track of movement direction
+    _newMode = false;        
+  }
+  else {
+    if(_curdir == MODE_RUNFWD)  {
+      // Moving the LED forward
+      // Are we at the end?
+      if(_leds[_ledCount-1] == _color){
+        _curdir = MODE_RUNREV;
+      }
+      else {
+        shiftFwd();
+      }
+    }
+    else {
+      // Moving the LED reverse
+      if(_leds[0] == _color) {
+        _curdir = MODE_RUNFWD;
+      }
+      else {
+        shiftRev();
+      }
+    }
+  }
 }
